@@ -1,16 +1,51 @@
-FROM ubuntu:jammy
+# syntax=docker/dockerfile:1
 
-RUN dpkg --add-architecture i386 && apt update && apt install -y wine wine32 wget p7zip-full
+# Stage 0: Download cache
+FROM --platform=linux/amd64 debian:bullseye AS downloader
 
+# Install only the tools needed for downloading
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a directory for downloads
+WORKDIR /downloads
+
+# Copy download options file
+COPY download-options /download-options
+
+# Download VC++ 6.0 archive - this will be a separate layer that can be cached
+# Using the URL from the options file
+RUN . /download-options && \
+    echo "Downloading from: $VC6_DOWNLOAD_URL" && \
+    wget -O vc6.7z "$VC6_DOWNLOAD_URL"
+
+# Stage 1: Extract and prepare VC++ 6.0 files (Always using amd64/x86_64)
+FROM --platform=linux/amd64 debian:bullseye AS builder
+
+# Install necessary tools to extract files
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    p7zip-full && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the downloaded file from the downloader stage
+COPY --from=downloader /downloads/vc6.7z /tmp/vc6.7z
+
+# Extract and setup Visual C++ 6.0
 RUN mkdir -p /opt/vc && cd /opt/vc && \
-  wget -O vc.7z https://winworldpc.com/download/c39228e2-80ba-715d-2411-c3a4c2a90f70/from/c39ac2af-c381-c2bf-1b25-11c3a4e284a2 && \
-  7z x vc.7z && \
-  mkdir -p /opt/vc/setup && cd /opt/vc/setup && \
-  7z x '../Microsoft Visual C++ 6.0 Standard.iso' && \
-  rm ../*.iso ../*.txt ../*.7z && \
-  mv VC98/* .. && \
-  cp -r COMMON/MSDEV98/BIN/* ../BIN
+    7z x /tmp/vc6.7z && \
+    mkdir -p /opt/vc/setup && cd /opt/vc/setup && \
+    7z x '../Microsoft Visual C++ 6.0 Standard.iso' && \
+    rm -f ../*.iso && \
+    find .. -name "*.txt" -type f -delete && \
+    find .. -name "*.7z" -type f -delete && \
+    mv VC98/* .. && \
+    cp -r COMMON/MSDEV98/BIN/* ../BIN
 
+# Fix inconsistent file names
 RUN \
   mv /opt/vc/CRT/SRC/ALGRITHM /opt/vc/CRT/SRC/ALGORITHM && \
   mv /opt/vc/CRT/SRC/FCTIONAL /opt/vc/CRT/SRC/FUNCTIONAL && \
@@ -39,9 +74,30 @@ RUN \
   mv /opt/vc/INCLUDE/SCRSRV_I.C /opt/vc/INCLUDE/SCARDSRV_I.C && \
   mv /opt/vc/INCLUDE/SSPSDL_I.C /opt/vc/INCLUDE/SSPSID_I.C
 
-RUN wine winver
+# Stage 2: Final container that will always run as x86_64
+FROM --platform=linux/amd64 debian:bullseye
 
+# Add i386 architecture support and install wine
+RUN dpkg --add-architecture i386 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wine \
+    wine32 \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy prepared VC++ 6.0 files from the builder stage
+COPY --from=builder /opt/vc /opt/vc
+
+# Initialize Wine
+RUN wine winver || true
+
+# Copy configuration files
 COPY setup.bat /opt/vc/setup.bat
 COPY copy_includes.sh /opt/vc/copy_includes.sh
+
+# Set working directory
 WORKDIR /opt/vc
+
+# Command to run
 CMD wine cmd /k setup.bat
