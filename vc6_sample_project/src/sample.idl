@@ -1,0 +1,22 @@
+// sample.idl
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+    uuid(12345678-1234-1234-1234-123456789ABC),
+    version(1.0),
+    helpstring("Sample Interface 1.0")
+]
+library SampleLib
+{
+    importlib("stdole32.tlb");
+    
+    [
+        uuid(12345678-1234-1234-1234-123456789ABD),
+        helpstring("Sample Interface")
+    ]
+    interface ISample : IUnknown
+    {
+        HRESULT Add([in] int a, [in] int b, [out, retval] int* result);
+    };
+};
