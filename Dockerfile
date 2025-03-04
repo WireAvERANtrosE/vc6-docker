@@ -78,20 +78,28 @@ RUN \
 # Stage 2: Final container that will always run as x86_64
 FROM --platform=linux/amd64 debian:latest
 
-# Add i386 architecture support and install wine
+# Add i386 architecture support and install wine and xvfb for headless operation
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     wine \
     wine32 \
+    xvfb \
     ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy prepared VC++ 6.0 files from the builder stage
 COPY --from=builder /opt/vc /opt/vc
 
-# Initialize Wine
-RUN wine winver || true
+# Setup environment for headless wine operation
+ENV DISPLAY=:0.0
+ENV WINEDEBUG=-all
+
+# Create entrypoint script to start Xvfb
+RUN echo '#!/bin/bash\nXvfb :0 -screen 0 1024x768x16 &\nsleep 1\nexec "$@"' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Skip wine initialization during build (will initialize on first run)
 
 # Copy configuration files
 COPY setup.bat /opt/vc/setup.bat
@@ -100,5 +108,6 @@ COPY copy_includes.sh /opt/vc/copy_includes.sh
 # Set working directory
 WORKDIR /opt/vc
 
-# Command to run
-CMD wine cmd /k setup.bat
+# Use the entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["wine", "cmd", "/k", "setup.bat"]
