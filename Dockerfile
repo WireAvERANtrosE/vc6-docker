@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# Stage 0: Download cache
+# Stage 0: Download stage using Docker build cache
 FROM --platform=linux/amd64 debian:bullseye AS downloader
 
-# Install only the tools needed for downloading
+# Install only what's needed for downloading
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     wget \
@@ -13,17 +13,18 @@ RUN apt-get update && \
 # Create a directory for downloads
 WORKDIR /downloads
 
-# Copy download options file
-COPY download-options /download-options
+# Copy files for download caching
+# The cache-marker.txt is optional and only used to invalidate cache when needed
+COPY download-options cache-marker.txt* /downloads/
 
-# Download VC++ 6.0 archive - this will be a separate layer that can be cached
-# Using the URL from the options file
-RUN . /download-options && \
-    echo "Downloading from: $VC6_DOWNLOAD_URL" && \
+# Download VC++ 6.0 archive - this will be cached by Docker layer caching
+# The download will be cached as long as download-options and cache-marker.txt don't change
+RUN . /downloads/download-options && \
+    echo "Downloading VC++ 6.0 from: $VC6_DOWNLOAD_URL" && \
     wget -O vc6.7z "$VC6_DOWNLOAD_URL"
 
 # Stage 1: Extract and prepare VC++ 6.0 files (Always using amd64/x86_64)
-FROM --platform=linux/amd64 debian:bullseye AS builder
+FROM --platform=linux/amd64 debian:latest AS builder
 
 # Install necessary tools to extract files
 RUN apt-get update && \
@@ -75,7 +76,7 @@ RUN \
   mv /opt/vc/INCLUDE/SSPSDL_I.C /opt/vc/INCLUDE/SSPSID_I.C
 
 # Stage 2: Final container that will always run as x86_64
-FROM --platform=linux/amd64 debian:bullseye
+FROM --platform=linux/amd64 debian:latest
 
 # Add i386 architecture support and install wine
 RUN dpkg --add-architecture i386 && \

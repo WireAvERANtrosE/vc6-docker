@@ -48,15 +48,15 @@ The Docker image is now self-contained and runs on any platform without the need
 ### Standard Build
 
 ```bash
-# Standard build
+# Standard build with layer caching
 docker build . --tag giulioz/vc6-docker
 ```
 
 ### Caching Downloads
 
-The Dockerfile is designed to cache the Visual C++ 6.0 download from WinWorld. When rebuilding the image, Docker will use the cached download layer if available, avoiding the need to re-download the large files.
+The Dockerfile is designed to cache the Visual C++ 6.0 download using Docker's layer caching mechanism. The download layer depends on the `download-options` file and an optional `cache-marker.txt` file, so it will be cached as long as these files don't change.
 
-If you want to provide a mirror or different download location, you can modify the `download-options` file:
+If you want to use a mirror or different download location, you can modify the `download-options` file:
 
 ```bash
 # Example: Edit the download-options file to use a different URL
@@ -66,16 +66,17 @@ echo "VC6_DOWNLOAD_URL=https://your-mirror.example.com/vc6.7z" > download-option
 docker build . --tag giulioz/vc6-docker
 ```
 
-For complete cache control, you can use Docker's cache options:
+To force a re-download of the VC++ package, you can:
 
 ```bash
-# Force a clean build without using cache
+# Method 1: Force a clean build without using any cache
 docker build --no-cache . -t giulioz/vc6-docker
 
-# Cache only the download stage (useful for CI/CD)
-docker build --target downloader . -t vc6-download-cache
-docker build . -t giulioz/vc6-docker
+# Method 2: Update the cache marker to invalidate just the download layer
+echo "v2" > cache-marker.txt
 ```
+
+The `cache-marker.txt` file provides a way to invalidate just the download cache without affecting other build layers, which is useful when you need to re-download the package but don't want to rebuild everything from scratch.
 
 ### Distribution
 
