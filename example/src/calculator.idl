@@ -1,0 +1,23 @@
+import "unknwn.idl";
+
+[
+    uuid(12345678-1234-1234-1234-123456789012),
+    version(1.0),
+    helpstring("Calculator 1.0 Type Library")
+]
+library CalculatorLib
+{
+    importlib("stdole32.tlb");
+    
+    [
+        uuid(12345678-1234-1234-1234-123456789013),
+        helpstring("Calculator Interface")
+    ]
+    interface ICalculator : IUnknown
+    {
+        HRESULT Add([in] int a, [in] int b, [out, retval] int* result);
+        HRESULT Subtract([in] int a, [in] int b, [out, retval] int* result);
+        HRESULT Multiply([in] int a, [in] int b, [out, retval] int* result);
+        HRESULT Divide([in] int a, [in] int b, [out, retval] int* result);
+    };
+};

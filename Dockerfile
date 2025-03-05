@@ -89,7 +89,9 @@ RUN dpkg --add-architecture i386 && \
     xvfb \
     ca-certificates \
     cmake \
-    git && \
+    git \
+    python3 \
+    python-is-python3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy prepared VC++ 6.0 files from the builder stage
@@ -109,7 +111,7 @@ RUN echo '#!/bin/bash\nwine cmd /c Z:\\opt\\vc\\setup.bat "&&" "$@"' > /opt/vc/r
 
 # Create a helper script for building CnC projects with CMake
 RUN echo '#!/bin/bash\n\
-# Configure and build CnC Generals Zero Hour with CMake\n\
+# Configure and build CnC Generals Zero Hour with CMake using the Python proxy approach\n\
 if [ "$#" -lt 1 ]; then\n\
   echo "Usage: $0 <source_dir> [build_dir]"\n\
   exit 1\n\
@@ -122,12 +124,14 @@ BUILD_DIR="${2:-${SOURCE_DIR}/build/vc6}"\n\
 mkdir -p "$BUILD_DIR"\n\
 cd "$BUILD_DIR"\n\
 \n\
-# Configure with CMake\n\
-cmake -G "NMake Makefiles" \\\n\
+# Add our tools directory to the PATH\n\
+export PATH="/opt/vc/tools:$PATH"\n\
+\n\
+# Configure with CMake using our toolchain file\n\
+cmake \\\n\
+  -DCMAKE_TOOLCHAIN_FILE="/opt/vc/vc6-toolchain.cmake" \\\n\
   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\\n\
-  -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" \\\n\
   -DCMAKE_BUILD_TYPE=Release \\\n\
-  -DTHYME_FLAGS="/W3" \\\n\
   "$SOURCE_DIR"\n\
 \n\
 if [ $? -ne 0 ]; then\n\
@@ -135,8 +139,8 @@ if [ $? -ne 0 ]; then\n\
   exit 1\n\
 fi\n\
 \n\
-# Build with NMake through Wine\n\
-/opt/vc/runvc6.sh nmake\n\
+# Build with CMake\n\
+cmake --build .\n\
 \n\
 if [ $? -ne 0 ]; then\n\
   echo "Build failed"\n\
@@ -153,8 +157,14 @@ echo "Build completed successfully"\n\
 COPY setup.bat /opt/vc/setup.bat
 COPY copy_includes.sh /opt/vc/copy_includes.sh
 
-# Copy test project
-# COPY cmake_test_project /opt/vc/cmake_test_project
+# Copy our Python proxy tools
+COPY tools /opt/vc/tools
+COPY vc6-toolchain.cmake /opt/vc/vc6-toolchain.cmake
+RUN chmod +x /opt/vc/tools/*.py
+
+# Copy example project
+COPY example /opt/vc/example
+RUN chmod +x /opt/vc/example/build.sh
 
 # Set working directory
 WORKDIR /opt/vc

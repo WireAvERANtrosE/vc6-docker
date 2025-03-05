@@ -1,10 +1,12 @@
-# Visual C++ 6.0 over Docker
+# Visual C++ 6.0 over Docker with CMake Integration
 
-Have you ever needed to build some C++ code for an old version of Windows using Visual C++ 6.0 from 1998? No? Well anyways here's a working toolchain on a Docker container for it.
+Have you ever needed to build some C++ code for an old version of Windows using Visual C++ 6.0 from 1998? No? Well anyways here's a working toolchain on a Docker container for it. Now with proper CMake integration!
 
 ![Thumbnail](./thumb.jpg)
 
 ## Using it
+
+### Traditional Approach
 
 ```bash
 # Starts a Windows CMD
@@ -28,6 +30,23 @@ You can also use a Makefile:
 # While in the example folder...
 nmake
 test # Hello world!
+```
+
+### CMake Integration (New!)
+
+We now provide a CMake integration that allows you to build VC6 projects using standard CMake commands on Linux/macOS:
+
+```bash
+# Run the Docker container
+docker run --rm -it -v $(pwd):/work giulioz/vc6-docker
+
+# Inside the container, you can build a CMake project using:
+/opt/vc/build_cnc.sh /work/your-project
+
+# Or try the included example project:
+cd /opt/vc/example
+./build.sh
+./build/run.sh
 ```
 
 ### Getting the includes
@@ -89,3 +108,73 @@ docker push giulioz/vc6-docker
 ```
 
 The container will run the same way on any platform (ARM/M1/M2 Macs, x86_64 Linux/Windows) without any special flags or configuration.
+
+## CMake Integration Details
+
+### How It Works
+
+The CMake integration uses Python proxy scripts to act as translators between CMake and Visual C++ 6.0:
+
+1. **Path Translation**: The proxy scripts convert between Linux/macOS paths and Windows paths.
+
+2. **CMake Integration**: The toolchain file (`vc6-toolchain.cmake`) configures CMake to use our proxy scripts as the compiler and linker.
+
+3. **Wine Execution**: The proxy scripts execute the Visual C++ 6.0 compiler and linker through Wine.
+
+4. **Error Handling**: The proxy scripts capture the compiler/linker output and return the appropriate exit codes.
+
+### Core Components
+
+- `tools/winetools.py`: Core utility functions for path translation and Wine execution
+- `tools/cl.py`: Proxy for the C/C++ compiler (CL.EXE)
+- `tools/link.py`: Proxy for the linker (LINK.EXE)
+- `tools/midl.py`: Proxy for the IDL compiler (MIDL.EXE)
+- `vc6-toolchain.cmake`: CMake toolchain file
+
+### Using in Your Projects
+
+To use the CMake integration in your own projects:
+
+1. Create a `CMakeLists.txt` file for your project.
+2. Configure CMake to use the VC6 toolchain file.
+3. Build with CMake's standard commands.
+
+Example `CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.12)
+project(MyProject)
+
+# Add your source files
+add_executable(my_app
+    src/main.cpp
+    src/utils.cpp
+)
+
+# Add include directories
+target_include_directories(my_app PRIVATE include)
+
+# Optional: Add IDL files
+target_idl_files(my_app
+    src/my_interface.idl
+)
+```
+
+Then build with:
+
+```bash
+# Configure with the VC6 toolchain
+cmake -DCMAKE_TOOLCHAIN_FILE=/opt/vc/vc6-toolchain.cmake -B build
+
+# Build
+cmake --build build
+```
+
+### Example Project
+
+Check out the `example` directory for a complete sample project that demonstrates:
+
+- Basic C++ code compilation
+- IDL file compilation
+- CMake configuration
+- Build and run scripts
