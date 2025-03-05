@@ -1,6 +1,6 @@
 @echo off
-REM Set up paths for Visual C++ 6.0, CMake, and Git
-set PATH=Z:\opt\vc\BIN;Z:\opt\vc\LIB;Z:\opt\cmake\win32\bin;Z:\opt\cmake\win64\bin;Z:\opt\git\bin;Z:\opt\git\cmd;%PATH%
+REM Set up paths for Visual C++ 6.0 only (using system CMake and Git from Linux)
+set PATH=Z:\opt\vc\BIN;Z:\opt\vc\LIB;%PATH%
 set INCLUDE=Z:\opt\vc\INCLUDE;Z:\opt\vc\MFC\INCLUDE;Z:\opt\vc\ATL\INCLUDE
 set LIB=Z:\opt\vc\LIB;Z:\opt\vc\MFC\LIB
 
@@ -12,9 +12,6 @@ set VC98_ROOT=Z:\opt\vc
 REM Set up common environment variables
 set VCINSTALLDIR=Z:\opt\vc
 set VCToolkitInstallDir=Z:\opt\vc
-
-REM Set up Git environment variables
-set GIT_INSTALL_ROOT=Z:\opt\git
 
 REM Echo the environment for debugging
 echo VC6 environment set up successfully!

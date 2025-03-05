@@ -21,29 +21,19 @@ COPY download-options cache-marker.txt* /downloads/
 # The download will be cached as long as download-options and cache-marker.txt don't change
 RUN . /downloads/download-options && \
     echo "Downloading VC++ 6.0 from: $VC6_DOWNLOAD_URL" && \
-    wget -O vc6.7z "$VC6_DOWNLOAD_URL" && \
-    echo "Downloading CMake for Windows (64-bit)" && \
-    wget -O cmake-win64.zip "https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip" && \
-    echo "Downloading CMake for Windows (32-bit)" && \
-    wget -O cmake-win32.zip "https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-i386.zip" && \
-    echo "Downloading Git for Windows (32-bit)" && \
-    wget -O git-win32.zip "https://github.com/git-for-windows/git/releases/download/v2.44.0.windows.1/PortableGit-2.44.0-32-bit.7z.exe"
+    wget -O vc6.7z "$VC6_DOWNLOAD_URL"
 
-# Stage 1: Extract and prepare VC++ 6.0 files and CMake (Always using amd64/x86_64)
+# Stage 1: Extract and prepare VC++ 6.0 files (Always using amd64/x86_64)
 FROM --platform=linux/amd64 debian:latest AS builder
 
 # Install necessary tools to extract files
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    p7zip-full \
-    unzip && \
+    p7zip-full && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the downloaded files from the downloader stage
 COPY --from=downloader /downloads/vc6.7z /tmp/vc6.7z
-COPY --from=downloader /downloads/cmake-win64.zip /tmp/cmake-win64.zip
-COPY --from=downloader /downloads/cmake-win32.zip /tmp/cmake-win32.zip
-COPY --from=downloader /downloads/git-win32.zip /tmp/git-win32.zip
 
 # Extract and setup Visual C++ 6.0
 RUN mkdir -p /opt/vc && cd /opt/vc && \
@@ -55,24 +45,6 @@ RUN mkdir -p /opt/vc && cd /opt/vc && \
     find .. -name "*.7z" -type f -delete && \
     mv VC98/* .. && \
     cp -r COMMON/MSDEV98/BIN/* ../BIN
-
-# Extract CMake for Windows (both 32-bit and 64-bit)
-RUN mkdir -p /opt/cmake && \
-    mkdir -p /opt/cmake/win64 && \
-    mkdir -p /opt/cmake/win32 && \
-    cd /opt/cmake/win64 && \
-    unzip /tmp/cmake-win64.zip && \
-    mv cmake-*/* . && \
-    rmdir cmake-* && \
-    cd /opt/cmake/win32 && \
-    unzip /tmp/cmake-win32.zip && \
-    mv cmake-*/* . && \
-    rmdir cmake-*
-
-# Extract Git for Windows (32-bit)
-RUN mkdir -p /opt/git && \
-    cd /opt/git && \
-    7z x /tmp/git-win32.zip
 
 # Fix inconsistent file names
 RUN \
@@ -106,20 +78,22 @@ RUN \
 # Stage 2: Final container that will always run as x86_64
 FROM --platform=linux/amd64 debian:latest
 
-# Add i386 architecture support and install wine and xvfb for headless operation
+# Add i386 architecture support and install wine, xvfb, cmake and git
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     wine \
     wine32 \
+    cmake \
+    make \
     xvfb \
-    ca-certificates && \
+    ca-certificates \
+    cmake \
+    git && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy prepared VC++ 6.0 files, CMake, and Git from the builder stage
+# Copy prepared VC++ 6.0 files from the builder stage
 COPY --from=builder /opt/vc /opt/vc
-COPY --from=builder /opt/cmake /opt/cmake
-COPY --from=builder /opt/git /opt/git
 
 # Setup environment for headless wine operation
 ENV DISPLAY=:0.0
@@ -129,6 +103,50 @@ ENV WINEDEBUG=-all
 RUN echo '#!/bin/bash\nXvfb :0 -screen 0 1024x768x16 &\nsleep 1\nexec "$@"' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
+# Create a helper script to launch wine with VC6 environment
+RUN echo '#!/bin/bash\nwine cmd /c Z:\\opt\\vc\\setup.bat "&&" "$@"' > /opt/vc/runvc6.sh && \
+    chmod +x /opt/vc/runvc6.sh
+
+# Create a helper script for building CnC projects with CMake
+RUN echo '#!/bin/bash\n\
+# Configure and build CnC Generals Zero Hour with CMake\n\
+if [ "$#" -lt 1 ]; then\n\
+  echo "Usage: $0 <source_dir> [build_dir]"\n\
+  exit 1\n\
+fi\n\
+\n\
+SOURCE_DIR="$1"\n\
+BUILD_DIR="${2:-${SOURCE_DIR}/build/vc6}"\n\
+\n\
+# Create build directory if it doesn\'t exist\n\
+mkdir -p "$BUILD_DIR"\n\
+cd "$BUILD_DIR"\n\
+\n\
+# Configure with CMake\n\
+cmake -G "NMake Makefiles" \\\n\
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\\n\
+  -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" \\\n\
+  -DCMAKE_BUILD_TYPE=Release \\\n\
+  -DTHYME_FLAGS="/W3" \\\n\
+  "$SOURCE_DIR"\n\
+\n\
+if [ $? -ne 0 ]; then\n\
+  echo "CMake configuration failed"\n\
+  exit 1\n\
+fi\n\
+\n\
+# Build with NMake through Wine\n\
+/opt/vc/runvc6.sh nmake\n\
+\n\
+if [ $? -ne 0 ]; then\n\
+  echo "Build failed"\n\
+  exit 1\n\
+fi\n\
+\n\
+echo "Build completed successfully"\n\
+' > /opt/vc/build_cnc.sh && \
+    chmod +x /opt/vc/build_cnc.sh
+
 # Skip wine initialization during build (will initialize on first run)
 
 # Copy configuration files
@@ -136,11 +154,11 @@ COPY setup.bat /opt/vc/setup.bat
 COPY copy_includes.sh /opt/vc/copy_includes.sh
 
 # Copy test project
-COPY cmake_test_project /opt/vc/cmake_test_project
+# COPY cmake_test_project /opt/vc/cmake_test_project
 
 # Set working directory
 WORKDIR /opt/vc
 
 # Use the entrypoint script
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["wine", "cmd", "/k", "setup.bat"]
+CMD ["bash"]

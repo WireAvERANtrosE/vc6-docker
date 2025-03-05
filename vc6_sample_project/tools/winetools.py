@@ -6,10 +6,26 @@ import sys
 import subprocess
 import tempfile
 
+def check_wine_available():
+    """Check if Wine and winepath are available."""
+    try:
+        subprocess.run(['which', 'wine'], capture_output=True, check=True)
+        subprocess.run(['which', 'winepath'], capture_output=True, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        print("Error: Wine or winepath not found. This script must run inside the Docker container.")
+        print("Please use ./docker-build.sh instead of running directly.")
+        return False
+
 def unix_to_wine(path):
     """Convert a Unix path to a Wine path."""
     if not path:
         return path
+    
+    # Check if winepath is available
+    if not check_wine_available():
+        sys.exit(1)
+        
     result = subprocess.run(['winepath', '-w', path], capture_output=True, text=True)
     return result.stdout.strip()
 
@@ -17,6 +33,11 @@ def wine_to_unix(path):
     """Convert a Wine path to Unix path."""
     if not path:
         return path
+        
+    # Check if winepath is available
+    if not check_wine_available():
+        sys.exit(1)
+        
     result = subprocess.run(['winepath', '-u', path], capture_output=True, text=True)
     return result.stdout.strip()
 
@@ -137,6 +158,12 @@ def compile_idl(idl_file, h_file, c_file, tlb_file):
     return run_cmd(cmd)
 
 if __name__ == "__main__":
+    # Check if we're in the Docker container with Wine available
+    if not check_wine_available():
+        print("This script must be run inside the Docker container with Wine installed.")
+        print("Please use the docker-build.sh script instead.")
+        sys.exit(1)
+        
     # Simple command-line interface
     if len(sys.argv) < 2:
         print("Usage: winetools.py command [args]")
